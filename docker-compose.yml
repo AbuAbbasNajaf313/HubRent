@@ -1,0 +1,24 @@
+services:
+  web:
+    build: .
+    env_file: .env
+    ports:
+      - "8000:8000"   # nicht 5000: auf macOS durch AirPlay belegt
+    depends_on:
+      - n8n
+
+  n8n:
+    image: n8nio/n8n:latest   # arm64-fähig, läuft auf dem M1
+    ports:
+      - "5678:5678"
+    environment:
+      - GENERIC_TIMEZONE=Europe/Berlin
+      - TZ=Europe/Berlin
+      - N8N_SECURE_COOKIE=false
+      - HUBRENT_API_URL=http://web:8000
+    env_file: .env
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+volumes:
+  n8n_data:
