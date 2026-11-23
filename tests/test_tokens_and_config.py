@@ -35,3 +35,20 @@ def test_config_demo_mode_scales_by_60():
     assert c.confirm_deadline_before == timedelta(minutes=24)
     assert c.pickup_window_after == timedelta(minutes=2)
     assert c.start_granularity == timedelta(minutes=1)
+
+
+def test_reservation_code_format():
+    from app.services.tokens import CODE_ALPHABET, new_reservation_code
+
+    code = new_reservation_code()
+    assert code.startswith("HR-") and len(code) == 9
+    assert set(code[3:]) <= set(CODE_ALPHABET)
+    assert not set("01ILO") & set(CODE_ALPHABET)
+
+
+def test_placeholder_secrets_count_as_unset():
+    from app.config import AppConfig
+
+    cfg = AppConfig.from_env({"INTERNAL_API_SECRET": "bitte-zufallswert-eintragen", "N8N_WEBHOOK_SECRET": "echt123"})
+    assert cfg.internal_api_secret == "" and cfg.n8n_webhook_secret == "echt123"
+    assert cfg.repository == "memory"

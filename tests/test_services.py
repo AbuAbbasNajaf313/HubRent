@@ -171,3 +171,101 @@ def test_quote(env):
     svc, *_ = env
     q = svc.quote("t2", "h1", RentalType.WEEKEND, berlin(2026, 12, 4, 14), NOW)
     assert q.price == Decimal("165.00") and q.free_devices == 1 and not q.binding
+
+
+def test_booking_gets_code_findable_for_terminal(env):
+    svc, repo, pub = env
+    res = svc.book("c1", "t1", "h1", RentalType.DAY, START_FAR, NOW)
+    assert res.reservation.code.startswith("HR-")
+    assert repo.find_reservation_by_code(res.reservation.code.lower()).id == res.reservation.id
+    assert pub.events[0][1]["reservation"]["code"] == res.reservation.code
+
+
+# --- Lese-Funktionen für die Oberfläche -------------------------------------------
+
+def test_catalog_prices_and_free_now(env):
+    svc, repo, _ = env
+    repo.hubs["h2"] = Hub("h2", "Hub Tempelhof", "Tempelhofer Damm 1")
+    entries = {e.device_type.id: e for e in svc.catalog(NOW)}
+    bh = entries["t1"]
+    assert bh.prices == {
+        RentalType.FOUR_HOURS: Decimal("16.00"),
+        RentalType.DAY: Decimal("20.00"),
+        RentalType.WEEKEND: Decimal("30.00"),
+    }
+    assert bh.free_by_hub == {"h1": 1, "h2": 0}
+    assert bh.free_total == 1
+
+
+def test_catalog_filters(env):
+    svc, *_ = env
+    assert [e.device_type.id for e in svc.catalog(NOW, category="Schleifen")] == ["t2"]
+    assert all(set(e.free_by_hub) == {"h1"} for e in svc.catalog(NOW, hub_id="h1"))
+
+
+def test_catalog_free_now_respects_current_booking(env):
+    svc, *_ = env
+    svc.book("c1", "t1", "h1", RentalType.DAY, berlin(2026, 11, 23, 13), NOW, binding_accepted=True)
+    assert {e.device_type.id: e.free_total for e in svc.catalog(NOW)}["t1"] == 0
+
+
+def test_confirm_by_customer(env):
+    svc, repo, pub = env
+    rid = svc.book("c1", "t1", "h1", RentalType.DAY, START_FAR, NOW).reservation.id
+    with pytest.raises(DomainError):
+        svc.confirm_by_customer(rid, "c-fremd", NOW)
+    res = svc.confirm_by_customer(rid, "c1", NOW)
+    assert res.changed and res.reservation.status is S.CONFIRMED and res.reservation.pin
+    assert pub.types()[-1] == "reservation.confirmed"
+
+
+def test_account_overview(env):
+    svc, repo, _ = env
+    repo.customers["c1"].strikes, repo.customers["c1"].clean_streak = 2, 3
+    pending = svc.book("c1", "t1", "h1", RentalType.DAY, START_FAR, NOW).reservation
+    soon = svc.book("c1", "t2", "h1", RentalType.DAY, START_SOON, NOW, binding_accepted=True).reservation
+    svc.mark_no_show(soon.id, START_SOON + timedelta(hours=3))
+
+    ov = svc.account_overview("c1", START_SOON + timedelta(hours=3))
+    assert [i.reservation.id for i in ov.active] == [pending.id]
+    assert [i.reservation.id for i in ov.past] == [soon.id]
+    item = ov.active[0]
+    assert item.can_confirm and item.cancellation.free_of_charge
+    assert item.details["device"]["name"] == "Akku-Bohrhammer"
+    assert ov.customer.strikes == 3 and ov.open_fees == Decimal("82.50")
+    assert ov.required_clean_rentals == 5
+
+
+def test_reservation_view_by_token(env):
+    svc, *_ = env
+    res = svc.book("c1", "t1", "h1", RentalType.DAY, START_FAR, NOW)
+    r = svc.reservation_for_token(res.token, NOW)
+    assert r.id == res.reservation.id
+    assert svc.details(r)["hub"]["name"] == "Hub Neukölln"
+    with pytest.raises(DomainError):
+        svc.reservation_for_token("falsch", NOW)
+
+
+# --- Rückgabe am Terminal per Code -----------------------------------------------
+
+def test_return_at_hub_by_code(env):
+    svc, repo, pub = env
+    res = svc.book("c1", "t1", "h1", RentalType.FOUR_HOURS, START_SOON, NOW, binding_accepted=True).reservation
+    with pytest.raises(DomainError, match="noch nichts abgeholt"):
+        svc.return_at_hub("h1", res.code, START_SOON)
+    svc.pick_up("h1", res.pin, START_SOON)
+    out = svc.return_at_hub("h1", res.code.lower(), START_SOON + timedelta(hours=4))
+    assert out.reservation.status is S.RETURNED and out.extra["locker_number"] == 1 and out.extra["on_time"]
+    with pytest.raises(DomainError, match="bereits zurückgegeben"):
+        svc.return_at_hub("h1", res.code, START_SOON + timedelta(hours=5))
+
+
+def test_return_at_wrong_hub_or_unknown_code(env):
+    svc, repo, _ = env
+    repo.hubs["h2"] = Hub("h2", "Hub Tempelhof", "Tempelhofer Damm 1")
+    res = svc.book("c1", "t1", "h1", RentalType.FOUR_HOURS, START_SOON, NOW, binding_accepted=True).reservation
+    svc.pick_up("h1", res.pin, START_SOON)
+    with pytest.raises(DomainError, match="Hub Neukölln"):
+        svc.return_at_hub("h2", res.code, START_SOON + timedelta(hours=1))
+    with pytest.raises(DomainError, match="Unbekannter"):
+        svc.return_at_hub("h1", "HR-NICHTS", START_SOON)

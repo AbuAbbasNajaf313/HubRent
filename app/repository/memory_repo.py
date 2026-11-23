@@ -74,6 +74,10 @@ class InMemoryRepository(Repository):
             (copy.deepcopy(r) for r in self.reservations.values() if r.token_hash == token_hash), None
         )
 
+    def find_reservation_by_code(self, code):
+        code = code.strip().upper()
+        return next((copy.deepcopy(r) for r in self.reservations.values() if r.code == code), None)
+
     def list_reservations_for_devices(self, device_ids):
         ids = set(device_ids)
         return [copy.deepcopy(r) for r in self.reservations.values() if r.device_id in ids]

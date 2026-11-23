@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge, button, reservation_facts, pickup_box %}
+{% block title %}Reservierung {{ item.reservation.code }}{% endblock %}
+{% block content %}
+{% set r = item.reservation %}{% set d = item.details %}
+<a href="{{ url_for('account.overview') }}" class="text-sm text-stone-500 hover:text-stone-900">← Mein Konto</a>
+
+<div class="max-w-2xl mt-4 space-y-6">
+  {% if is_new %}
+    <div class="rounded-xl bg-emerald-50 border border-emerald-200 p-5">
+      <h1 class="text-2xl font-bold text-emerald-900 mb-1">
+        {{ 'Gebucht! Deine PIN ist da.' if r.status == S.CONFIRMED else 'Reserviert!' }}
+      </h1>
+      <p class="text-emerald-900 text-sm">
+        {% if r.status == S.CONFIRMED %}
+          Die Buchung ist verbindlich. Wir haben dir alles auch per Mail geschickt.
+        {% else %}
+          Zwei Tage vor Mietbeginn schicken wir dir eine Mail mit einem Bestätigungs-Link. Bestätigst du bis 24 Stunden vorher, bekommst du deine PIN. Du kannst auch jetzt schon hier bestätigen.
+        {% endif %}
+      </p>
+    </div>
+  {% else %}
+    <h1 class="text-2xl font-bold flex items-center gap-3">{{ d.device.name }} {{ status_badge(r.status) }}</h1>
+  {% endif %}
+
+  {% if r.status == S.CONFIRMED %}{{ pickup_box(d) }}{% endif %}
+
+  <div class="rounded-xl bg-white border border-stone-200 p-5">{{ reservation_facts(d) }}</div>
+
+  <div class="flex flex-wrap gap-3">
+    {% if item.can_confirm %}
+    <form method="post" action="{{ url_for('account.confirm', reservation_id=r.id) }}">{{ form.csrf_token }}{{ button('Jetzt bestätigen', 'dark') }}</form>
+    {% endif %}
+    {% if item.cancellation.allowed %}
+    <form method="post" action="{{ url_for('account.cancel', reservation_id=r.id) }}"
+          {% if not item.cancellation.free_of_charge %}onsubmit="return confirm('Spätstorno: Das gibt einen Strike. Wirklich stornieren?')"{% endif %}>
+      {{ form.csrf_token }}{{ button('Stornieren', 'ghost' if item.cancellation.free_of_charge else 'danger') }}
+    </form>
+    <p class="text-sm text-stone-500 self-center">{{ item.cancellation.reason }}</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

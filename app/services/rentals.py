@@ -16,22 +16,23 @@ from decimal import Decimal
 from typing import Any
 
 from app.domain import rules as R
-from app.domain.availability import count_free_devices, find_free_device, is_device_free
-from app.domain.errors import DomainError, InvalidBookingTime, NotAvailable
+from app.domain.availability import BLOCKING_STATUSES, count_free_devices, find_free_device, is_device_free
+from app.domain.errors import DomainError, InvalidBookingTime, NotAvailable, NotFound
 from app.domain.models import (
     Customer,
+    DeviceType,
     RentalType,
     Reservation,
     ReservationStatus as S,
     ViolationType,
 )
-from app.domain.pricing import compute_end, compute_price, validate_start
+from app.domain.pricing import compute_end, compute_price, next_possible_start, validate_start
 from app.domain.rule_config import RuleConfig
 from app.domain.strikes import progress_text, register_return, register_violation
 from app.repository.base import EventLogEntry, Fee, Repository, StrikeEvent
 
 from .events import EventPublisher
-from .tokens import hash_token, new_pin, new_token
+from .tokens import hash_token, new_pin, new_reservation_code, new_token
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,34 @@ class Result:
     fee: Decimal = Decimal("0.00")
     message: str = ""
     extra: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class CatalogEntry:
+    device_type: DeviceType
+    prices: dict[RentalType, Decimal]
+    free_by_hub: dict[str, int]  # Hub-ID → freie Geräte für 4 h ab dem nächsten möglichen Start
+
+    @property
+    def free_total(self) -> int:
+        return sum(self.free_by_hub.values())
+
+
+@dataclass(frozen=True)
+class AccountItem:
+    reservation: Reservation
+    details: dict[str, Any]
+    cancellation: R.CancellationAssessment
+    can_confirm: bool
+
+
+@dataclass(frozen=True)
+class AccountOverview:
+    customer: Customer
+    active: list[AccountItem]
+    past: list[AccountItem]
+    open_fees: Decimal
+    required_clean_rentals: int
 
 
 class RentalService:
@@ -96,6 +125,56 @@ class RentalService:
             binding=R.initial_status(start_utc, now, self.rules) is S.CONFIRMED,
         )
 
+    # ------------------------------------------------------------------ Katalog
+    def catalog(self, now: datetime, hub_id: str | None = None, category: str | None = None) -> list[CatalogEntry]:
+        """Alle Gerätetypen mit Preisen und "jetzt frei"-Zahl pro Hub.
+
+        "Jetzt frei" = für eine 4-h-Miete ab dem nächsten möglichen Start verfügbar.
+        Nur zwei Abfragen für alle Geräte und Reservierungen, nicht eine pro Typ
+        (wichtig für das Airtable-Rate-Limit).
+        """
+        hubs = [h for h in self.repo.list_hubs() if h.active and (hub_id is None or h.id == hub_id)]
+        types = [t for t in self.repo.list_device_types() if category is None or t.category == category]
+        devices = self.repo.list_devices()
+        reservations = self.repo.list_reservations_for_devices([d.id for d in devices])
+        start = next_possible_start(now, self.rules).astimezone(timezone.utc)
+        end = compute_end(RentalType.FOUR_HOURS, start, self.rules)
+        buffer = self.rules.buffer_after_rental
+        return [
+            CatalogEntry(
+                device_type=t,
+                prices={rt: compute_price(rt, t.daily_rate) for rt in RentalType},
+                free_by_hub={
+                    h.id: count_free_devices(devices, reservations, t.id, h.id, start, end, buffer) for h in hubs
+                },
+            )
+            for t in sorted(types, key=lambda t: (t.category, t.name))
+        ]
+
+    # ------------------------------------------------------------------ Konto
+    def account_overview(self, customer_id: str, now: datetime) -> AccountOverview:
+        customer = self._customer(customer_id)
+        active, past = [], []
+        for r in self.repo.list_reservations_for_customer(customer_id):
+            item = AccountItem(
+                reservation=r,
+                details=self._payload(r, customer),
+                cancellation=R.assess_cancellation(r, now, self.rules),
+                can_confirm=R.can_confirm(r, now, self.rules),
+            )
+            (active if r.status in BLOCKING_STATUSES else past).append(item)
+        active.sort(key=lambda i: i.reservation.start_at)
+        open_fees = sum((f.amount for f in self.repo.list_fees_for_customer(customer_id) if f.status == "OPEN"), Decimal("0.00"))
+        return AccountOverview(customer, active, past, open_fees, self.rules.clean_rentals_for_reduction)
+
+    def reservation_for_token(self, token: str, now: datetime) -> Reservation:
+        """Für die Token-Seiten: Reservierung anzeigen, ohne etwas zu ändern."""
+        return self._by_token(token, now)
+
+    def details(self, r: Reservation, token: str | None = None) -> dict[str, Any]:
+        """Alles, was eine Seite oder Mail über eine Reservierung anzeigt (mit Token auch die Links)."""
+        return self._payload(r, self._customer(r.customer_id), token=token)
+
     # ------------------------------------------------------------------ Buchen
     def book(
         self,
@@ -128,6 +207,7 @@ class RentalService:
         status = R.initial_status(q.start_at, now, self.rules)
         reservation = Reservation(
             id="",
+            code=new_reservation_code(),
             customer_id=customer.id,
             device_id=device.id,
             rental_type=rental_type,
@@ -161,7 +241,16 @@ class RentalService:
 
     # ------------------------------------------------------------------ Kunde
     def confirm(self, token: str, now: datetime) -> Result:
-        r = self._by_token(token, now)
+        return self._confirm(self._by_token(token, now), now, token=token)
+
+    def confirm_by_customer(self, reservation_id: str, customer_id: str, now: datetime) -> Result:
+        """Bestätigen aus "Mein Konto" (eingeloggt, ohne Mail-Link)."""
+        r = self._reservation(reservation_id)
+        if r.customer_id != customer_id:
+            raise DomainError("Diese Reservierung gehört nicht zu deinem Konto.")
+        return self._confirm(r, now)
+
+    def _confirm(self, r: Reservation, now: datetime, token: str | None = None) -> Result:
         customer = self._customer(r.customer_id)
         if r.status is S.CONFIRMED:
             return Result(False, r, customer, message="Bereits bestätigt.")
@@ -199,7 +288,7 @@ class RentalService:
         if not assessment.free_of_charge:
             customer, fee = self._apply_violation(customer, r, ViolationType.LATE_CANCEL, now)
         self._emit("reservation.cancelled", r, customer, extra={"free_of_charge": assessment.free_of_charge, "fee": fee})
-        return Result(True, r, customer, fee=fee, message=assessment.reason)
+        return Result(True, r, customer, fee=fee, message=assessment.reason, extra={"free_of_charge": assessment.free_of_charge})
 
     # ------------------------------------------------------------------ n8n (idempotent)
     def send_reminder(self, reservation_id: str, now: datetime) -> Result:
@@ -275,6 +364,23 @@ class RentalService:
         self._emit("reservation.returned", r, customer, extra={"on_time": on_time})
         return Result(True, r, customer, extra={"on_time": on_time, "strike_reduced": res.strike_reduced})
 
+    def return_at_hub(self, hub_id: str, code: str, now: datetime) -> Result:
+        """Rückgabe am Terminal: Kunde tippt den Reservierungscode, das richtige Fach öffnet sich."""
+        r = self.repo.find_reservation_by_code(code or "")
+        if r is None:
+            raise DomainError("Unbekannter Reservierungscode.")
+        device = self.repo.get_device(r.device_id)
+        if device is None or device.hub_id != hub_id:
+            hub = self.repo.get_hub(device.hub_id) if device else None
+            raise DomainError(f"Dieses Gerät gehört in den {hub.name if hub else 'anderen Hub'}.")
+        if r.status is S.RETURNED:
+            raise DomainError("Dieses Gerät wurde bereits zurückgegeben.")
+        if r.status is not S.PICKED_UP:
+            raise DomainError("Zu diesem Code wurde noch nichts abgeholt.")
+        result = self.return_item(r.id, now)
+        result.extra["locker_number"] = device.locker_number
+        return result
+
     # ------------------------------------------------------------------ Hilfen
     def _apply_violation(
         self, customer: Customer, r: Reservation, violation: ViolationType, now: datetime
@@ -299,13 +405,13 @@ class RentalService:
     def _reservation(self, reservation_id: str) -> Reservation:
         r = self.repo.get_reservation(reservation_id)
         if r is None:
-            raise DomainError("Reservierung nicht gefunden.")
+            raise NotFound("Reservierung nicht gefunden.")
         return r
 
     def _customer(self, customer_id: str) -> Customer:
         c = self.repo.get_customer(customer_id)
         if c is None:
-            raise DomainError("Kunde nicht gefunden.")
+            raise NotFound("Kunde nicht gefunden.")
         return c
 
     def _hub_id_of(self, r: Reservation) -> str:
@@ -333,6 +439,7 @@ class RentalService:
         payload: dict[str, Any] = {
             "reservation": {
                 "id": r.id,
+                "code": r.code,
                 "status": r.status.value,
                 "rental_type": r.rental_type.value,
                 "start_at": r.start_at.isoformat(),
@@ -341,6 +448,8 @@ class RentalService:
                 "end_local": r.end_at.astimezone(tz).strftime(fmt),
                 "price": str(r.price),
                 "pin": r.pin if r.status is S.CONFIRMED else "",
+                "pickup_from_local": R.pickup_window(r, self.rules)[0].astimezone(tz).strftime(fmt),
+                "pickup_until_local": R.pickup_window(r, self.rules)[1].astimezone(tz).strftime(fmt),
             },
             "customer": {
                 "email": customer.email,

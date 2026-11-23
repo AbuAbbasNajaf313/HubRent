@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Hub-Terminals{% endblock %}
+{% block content %}
+<h1 class="text-3xl font-bold mb-2">Hub-Terminals</h1>
+<p class="text-stone-600 mb-6">Simulator der Terminals vor Ort: PIN eingeben zum Abholen, Reservierungscode zur Rückgabe.</p>
+<div class="grid sm:grid-cols-2 gap-4">
+  {% for h in hubs %}
+  <a href="{{ url_for('terminal.kiosk', hub_id=h.id) }}" class="rounded-xl bg-stone-900 text-white p-6 hover:bg-stone-800">
+    <div class="text-lg font-semibold">{{ h.name }}</div>
+    <div class="text-sm text-stone-400">{{ h.address }}</div>
+    <div class="text-sm text-orange-400 mt-3">Terminal öffnen →</div>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}

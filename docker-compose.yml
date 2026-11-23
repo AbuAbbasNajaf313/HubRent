@@ -16,9 +16,12 @@ services:
       - TZ=Europe/Berlin
       - N8N_SECURE_COOKIE=false
       - HUBRENT_API_URL=http://web:8000
+      # Workflows lesen Fristen und Secrets per $env (siehe n8n/workflows)
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
     env_file: .env
     volumes:
       - n8n_data:/home/node/.n8n
+      - ./n8n/workflows:/workflows:ro   # für: n8n import:workflow --separate --input=/workflows
 
 volumes:
   n8n_data:

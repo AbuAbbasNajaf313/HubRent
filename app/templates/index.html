@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Werkzeug, wann du es brauchst{% endblock %}
+{% block content %}
+<section class="grid md:grid-cols-2 gap-10 items-center py-8">
+  <div>
+    <p class="text-sm font-semibold text-brand-700 mb-3">Mietgeräte aus dem Schließfach-Hub</p>
+    <h1 class="text-4xl md:text-5xl font-extrabold tracking-tight leading-tight mb-5">Werkzeug, wann du es brauchst. 24/7 aus dem Hub.</h1>
+    <p class="text-lg text-stone-600 mb-8">Bohrhammer, Teppichreiniger oder Parkettschleifer online reservieren und rund um die Uhr per PIN im Baumarkt-Hub abholen. Ohne Warteschlange, ohne Öffnungszeiten.</p>
+    <div class="flex flex-wrap gap-3">
+      <a href="{{ url_for('catalog.devices') }}" class="rounded-lg bg-brand-600 text-white px-5 py-3 font-semibold hover:bg-brand-700">Geräte ansehen</a>
+      {% if not current_user.is_authenticated %}
+      <a href="{{ url_for('auth.register') }}" class="rounded-lg border border-stone-300 bg-white px-5 py-3 font-semibold hover:bg-stone-100">Konto erstellen</a>
+      {% endif %}
+    </div>
+  </div>
+  <div class="rounded-2xl bg-stone-900 text-white p-8 shadow-xl">
+    <div class="text-xs uppercase tracking-wide text-stone-400 mb-4">Hub Neukölln · Terminal</div>
+    <div class="grid grid-cols-4 gap-2 mb-6">
+      {% for n in range(1, 13) %}
+      <div class="aspect-square rounded-lg {{ 'bg-brand-500 text-white' if n == 7 else 'bg-stone-800 text-stone-500' }} grid place-items-center text-sm font-bold">{{ n }}</div>
+      {% endfor %}
+    </div>
+    <div class="font-mono text-2xl tracking-[0.4em] text-center bg-stone-800 rounded-lg py-3">4 8 2 • • •</div>
+    <p class="text-center text-sm text-stone-400 mt-3">Fach 7 öffnet sich …</p>
+  </div>
+</section>
+
+<section class="py-12">
+  <h2 class="text-2xl font-bold mb-6">So funktioniert's</h2>
+  <ol class="grid md:grid-cols-3 gap-4">
+    {% for title, text in [
+      ('Reservieren', 'Gerät, Hub und Zeitraum wählen: 4 Stunden, ein bis 14 Tage oder das ganze Wochenende.'),
+      ('Bestätigen', 'Zwei Tage vorher fragen wir nach, ob es dabei bleibt. Ein Klick in der Mail genügt, dann kommt deine PIN.'),
+      ('Abholen', 'PIN am Terminal eingeben, das Fach öffnet sich. Rückgabe genauso einfach, jederzeit.'),
+    ] %}
+    <li class="rounded-xl bg-white border border-stone-200 p-6">
+      <div class="w-8 h-8 rounded-full bg-brand-100 text-brand-700 grid place-items-center font-bold mb-3">{{ loop.index }}</div>
+      <h3 class="font-semibold mb-1">{{ title }}</h3>
+      <p class="text-sm text-stone-600">{{ text }}</p>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+
+<section id="fair-use" class="py-12 grid md:grid-cols-2 gap-10">
+  <div>
+    <h2 class="text-2xl font-bold mb-3">Fair Use: das Strike-System</h2>
+    <p class="text-stone-600 mb-4">Wer reserviert und nicht abholt, blockiert ein Gerät, das jemand anderes gebraucht hätte. Deshalb gibt es bei No-Shows und sehr späten Stornierungen einen Strike. Wer zuverlässig ist, baut Strikes wieder ab.</p>
+    <ul class="text-sm text-stone-600 space-y-1 list-disc pl-5">
+      <li>Bis 24 Stunden vor Mietbeginn stornierst du immer kostenlos.</li>
+      <li>In den ersten 15 Minuten nach der Buchung ist Stornieren immer kostenlos.</li>
+      <li>5 pünktliche Rückgaben in Folge = 1 Strike weniger.</li>
+    </ul>
+  </div>
+  <div class="rounded-xl bg-white border border-stone-200 overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-stone-100 text-left"><tr><th class="px-4 py-3">Strike-Stand</th><th class="px-4 py-3">Folge</th></tr></thead>
+      <tbody class="divide-y divide-stone-200">
+        <tr><td class="px-4 py-3 font-medium">1. Strike</td><td class="px-4 py-3">Verwarnung, keine Gebühr</td></tr>
+        <tr><td class="px-4 py-3 font-medium">2. Strike</td><td class="px-4 py-3">Gebühr: 50 % einer Tagesmiete</td></tr>
+        <tr><td class="px-4 py-3 font-medium">ab 3. Strike</td><td class="px-4 py-3">Gebühr: 75 % einer Tagesmiete</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

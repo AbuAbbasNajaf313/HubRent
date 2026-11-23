@@ -1,0 +1,206 @@
+{
+  "id": "hubrentWf04NoSho",
+  "name": "HubRent – No-Show-Check",
+  "active": false,
+  "nodes": [
+    {
+      "id": "c1793cde-6aa6-52c7-8895-f0d48daa8928",
+      "name": "Alle 1 Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "618d3d9f-31f8-5069-b140-8dfcc0fffd2f",
+      "name": "Fällige Reservierungen suchen",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AIRTABLE_BASE_ID }}"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "Reservations"
+        },
+        "filterByFormula": "={{ \"AND({status}='CONFIRMED', NOT({picked_up_at}), IS_BEFORE(DATEADD({start_at}, \" + ($env.PICKUP_WINDOW_AFTER_MIN || 120) + \", '\" + ($env.DEMO_MODE === 'true' ? 'seconds' : 'minutes') + \"'), DATETIME_PARSE('\" + $now.toUTC().toISO() + \"')))\" }}",
+        "returnAll": true,
+        "options": {
+          "fields": [
+            "reservation_code",
+            "status",
+            "start_at"
+          ]
+        }
+      }
+    },
+    {
+      "id": "6caae6f5-f1e1-5661-ac7c-fd11b958d561",
+      "name": "Flask: no-show",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.HUBRENT_API_URL }}/api/internal/reservations/{{ $json.id }}/no-show",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Internal-Secret",
+              "value": "={{ $env.INTERNAL_API_SECRET }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "f32bd104-8f3f-5705-aaf7-d59889a70697",
+      "name": "Geändert?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "37cc1853-19d5-5741-882b-c58e2136f166",
+              "leftValue": "={{ $json.changed }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "d684eb2e-7109-5737-8a86-2587dfc6344f",
+      "name": "An Mail Dispatcher",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.N8N_SELF_WEBHOOK_URL || 'http://localhost:5678/webhook/hubrent-event') }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-HubRent-Secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify(Object.assign({}, $json, { event: 'reservation.no_show' })) }}"
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    }
+  ],
+  "connections": {
+    "Alle 1 Minute": {
+      "main": [
+        [
+          {
+            "node": "Fällige Reservierungen suchen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fällige Reservierungen suchen": {
+      "main": [
+        [
+          {
+            "node": "Flask: no-show",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flask: no-show": {
+      "main": [
+        [
+          {
+            "node": "Geändert?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Geändert?": {
+      "main": [
+        [
+          {
+            "node": "An Mail Dispatcher",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "errorWorkflow": "hubrentWf99Error"
+  },
+  "pinData": {},
+  "tags": []
+}

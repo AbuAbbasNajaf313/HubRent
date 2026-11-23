@@ -1,0 +1,9 @@
+# Nicht ins Image: Secrets, lokale Umgebung, Caches
+.env
+.venv/
+.git/
+__pycache__/
+*.pyc
+.pytest_cache/
+n8n_data/
+.DS_Store

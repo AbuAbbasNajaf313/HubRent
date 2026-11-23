@@ -5,3 +5,6 @@ __pycache__/
 .venv/
 n8n_data/
 .DS_Store
+
+# Interne Spezifikation (nur lokal, nicht veröffentlichen)
+docs/SPEC.md

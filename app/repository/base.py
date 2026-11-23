@@ -87,6 +87,9 @@ class Repository(ABC):
     def find_reservation_by_token_hash(self, token_hash: str) -> Reservation | None: ...
 
     @abstractmethod
+    def find_reservation_by_code(self, code: str) -> Reservation | None: ...
+
+    @abstractmethod
     def list_reservations_for_devices(self, device_ids: list[str]) -> list[Reservation]: ...
 
     @abstractmethod

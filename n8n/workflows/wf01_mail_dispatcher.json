@@ -1,0 +1,324 @@
+{
+  "id": "hubrentWf01Mails",
+  "name": "HubRent – Mail Dispatcher",
+  "active": false,
+  "nodes": [
+    {
+      "id": "c25f98c3-80fe-5b74-883d-26bcaf28994b",
+      "name": "Event von Flask",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "hubrent-event",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "83ba1a4c-5dd8-50c5-befc-58ce1b192f16"
+    },
+    {
+      "id": "bc4479a9-38d0-5157-9224-47c3b2f1411e",
+      "name": "Secret korrekt?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "35b77070-5579-59c3-bc92-4717e81a99dc",
+              "leftValue": "={{ $json.headers['x-hubrent-secret'] }}",
+              "rightValue": "={{ $env.N8N_WEBHOOK_SECRET }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "700e5649-7f83-50de-b994-3c7327e1aecd",
+      "name": "Antwort 401",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        420
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"error\": \"unauthorized\"}",
+        "options": {
+          "responseCode": 401
+        }
+      }
+    },
+    {
+      "id": "8473d9c2-28b0-569c-af16-9129b6fc1f1c",
+      "name": "Antwort 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        200
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"ok\": true}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "e3c3571e-36d2-5d66-9f39-2cc30acfb55c",
+      "name": "Mail bauen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        200
+      ],
+      "parameters": {
+        "jsCode": "// HubRent – Mail-Vorlagen für den Code-Node \"Mail bauen\" in WF-01 (Mail Dispatcher).\n//\n// Quelle für den Node: scripts/build_n8n_workflows.py bettet diese Datei ein.\n// Eingang: Events von Flask (Webhook, Daten unter json.body) oder von WF-02/03/04\n// (gleiches Format, plus \"fee\" und \"links\" aus der internen API).\n// Ausgang pro Event ein Item: { send, event, to, subject, html, text, reservation_id, payload }.\n// Events ohne Mail (z. B. strike.issued) bekommen send=false und werden nur protokolliert.\n\nconst BRAND = '#ea580c';\nconst DARK = '#1c1917';\n\nfunction esc(value) {\n  return String(value ?? '')\n    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;').replace(/'/g, '&#39;');\n}\n\nfunction euro(value) {\n  const n = Number(value || 0);\n  return n.toFixed(2).replace('.', ',') + ' €';\n}\n\nfunction button(href, label, color) {\n  if (!href) return '';\n  return `<a href=\"${esc(href)}\" style=\"display:inline-block;background:${color || BRAND};color:#ffffff;` +\n    `text-decoration:none;font-weight:600;padding:12px 20px;border-radius:8px;margin:4px 8px 4px 0\">${esc(label)}</a>`;\n}\n\nfunction facts(d) {\n  const r = d.reservation || {};\n  const rows = [\n    ['Gerät', d.device && d.device.name],\n    ['Hub', d.hub && `${d.hub.name} · ${d.hub.address}`],\n    ['Zeitraum', `${r.start_local} bis ${r.end_local}`],\n    ['Preis', euro(r.price)],\n    ['Code', r.code],\n  ];\n  return '<table style=\"border-collapse:collapse;font-size:14px;margin:16px 0\">' +\n    rows.map(([k, v]) => `<tr><td style=\"color:#78716c;padding:4px 16px 4px 0\">${esc(k)}</td>` +\n      `<td style=\"padding:4px 0\">${esc(v)}</td></tr>`).join('') + '</table>';\n}\n\nfunction pinBox(d) {\n  const r = d.reservation || {};\n  return `<div style=\"background:${DARK};color:#ffffff;border-radius:12px;padding:20px;margin:16px 0\">` +\n    `<div style=\"font-size:12px;color:#a8a29e;text-transform:uppercase\">Deine PIN</div>` +\n    `<div style=\"font-family:monospace;font-size:32px;font-weight:700;letter-spacing:6px\">${esc(r.pin)}</div>` +\n    `<div style=\"margin-top:8px;font-size:14px\">Fach ${esc(d.device && d.device.locker_number)} · ` +\n    `abholbar ${esc(r.pickup_from_local)} bis ${esc(r.pickup_until_local)}</div></div>`;\n}\n\nfunction strikeLine(d) {\n  return `<p style=\"font-size:13px;color:#78716c\">Dein Strike-Stand: ${esc(d.customer && d.customer.strike_text)}</p>`;\n}\n\nfunction layout(heading, inner) {\n  return '<!doctype html><html lang=\"de\"><body style=\"margin:0;background:#f5f5f4;font-family:Arial,Helvetica,sans-serif;color:' + DARK + '\">' +\n    '<div style=\"max-width:560px;margin:0 auto;padding:24px\">' +\n    `<div style=\"font-weight:700;font-size:18px;margin-bottom:16px\"><span style=\"background:${BRAND};color:#fff;border-radius:6px;padding:4px 8px;margin-right:8px\">HR</span>HubRent</div>` +\n    '<div style=\"background:#ffffff;border-radius:12px;padding:24px;border:1px solid #e7e5e4\">' +\n    `<h1 style=\"font-size:22px;margin:0 0 12px\">${esc(heading)}</h1>${inner}</div>` +\n    '<p style=\"font-size:11px;color:#a8a29e;margin-top:16px\">HubRent ist ein fiktives Demo-Projekt. Diese Mail wurde automatisch verschickt.</p>' +\n    '</div></body></html>';\n}\n\nfunction feeOf(d) {\n  if (d.fee && d.fee.amount !== undefined) return Number(d.fee.amount);\n  if (d.extra && d.extra.fee !== undefined) return Number(d.extra.fee);\n  return 0;\n}\n\n// Jede Vorlage liefert Betreff, Überschrift, HTML-Inhalt und Klartext (Fallback für einfache Mailprogramme).\nconst TEMPLATES = {\n  'reservation.created': (d) => ({\n    subject: `Reservierung eingegangen: ${d.device.name} (${d.reservation.code})`,\n    heading: 'Deine Reservierung ist eingegangen',\n    html: `<p>Hallo ${esc(d.customer.full_name)},</p><p>wir haben deine Reservierung erhalten. Zwei Tage vor Mietbeginn ` +\n      'fragen wir per Mail nach, ob es dabei bleibt. Du kannst auch jetzt schon bestätigen.</p>' + facts(d) +\n      button(d.links && d.links.confirm, 'Jetzt bestätigen') + button(d.links && d.links.cancel, 'Stornieren', '#78716c'),\n    text: `Hallo ${d.customer.full_name}, deine Reservierung ${d.reservation.code} (${d.device.name}, ` +\n      `${d.reservation.start_local} bis ${d.reservation.end_local}) ist eingegangen.\\n` +\n      `Bestätigen: ${(d.links && d.links.confirm) || '-'}\\nStornieren: ${(d.links && d.links.cancel) || '-'}`,\n  }),\n\n  'reservation.reminder': (d) => ({\n    subject: `Bitte bestätige deine Reservierung (${d.reservation.code})`,\n    heading: 'Bleibt es bei deiner Reservierung?',\n    html: `<p>Hallo ${esc(d.customer.full_name)},</p><p>bitte bestätige deine Reservierung, damit wir das Gerät für dich ` +\n      'bereithalten. Ohne Bestätigung geben wir es 24 Stunden vor Beginn kostenlos wieder frei.</p>' + facts(d) +\n      button(d.links && d.links.confirm, 'Ja, ich hole es ab') + button(d.links && d.links.cancel, 'Stornieren (kostenlos)', '#78716c'),\n    text: `Hallo ${d.customer.full_name}, bitte bestätige deine Reservierung ${d.reservation.code}.\\n` +\n      `Bestätigen: ${d.links && d.links.confirm}\\nStornieren: ${d.links && d.links.cancel}`,\n  }),\n\n  'reservation.confirmed': (d) => ({\n    subject: `Deine PIN für ${d.device.name}: ${d.reservation.pin}`,\n    heading: 'Bestätigt! Hier ist deine PIN.',\n    html: `<p>Hallo ${esc(d.customer.full_name)},</p><p>deine Reservierung ist verbindlich. Gib die PIN am Terminal im Hub ein, ` +\n      'dann öffnet sich dein Fach.</p>' + pinBox(d) + facts(d) + strikeLine(d),\n    text: `Hallo ${d.customer.full_name}, deine PIN: ${d.reservation.pin}, Fach ${d.device.locker_number}, ` +\n      `${d.hub.name} (${d.hub.address}). Abholung ${d.reservation.pickup_from_local} bis ${d.reservation.pickup_until_local}.\\n` +\n      `Strike-Stand: ${d.customer.strike_text}`,\n  }),\n\n  'reservation.auto_cancelled': (d) => ({\n    subject: `Reservierung freigegeben (${d.reservation.code})`,\n    heading: 'Deine Reservierung wurde freigegeben',\n    html: `<p>Hallo ${esc(d.customer.full_name)},</p><p>du hast die Reservierung nicht rechtzeitig bestätigt. Wir haben das ` +\n      'Gerät deshalb freigegeben. Das ist kostenlos und gibt keinen Strike.</p>' + facts(d),\n    text: `Hallo ${d.customer.full_name}, deine Reservierung ${d.reservation.code} wurde mangels Bestätigung kostenlos freigegeben.`,\n  }),\n\n  'reservation.cancelled': (d) => {\n    const free = !d.extra || d.extra.free_of_charge !== false;\n    const fee = feeOf(d);\n    const note = free ? 'Die Stornierung war kostenlos.'\n      : `Da die Stornierung weniger als 24 Stunden vor Mietbeginn kam, gibt es einen Strike${fee > 0 ? ` und eine Gebühr von ${euro(fee)}` : ' (Verwarnung, keine Gebühr)'}.`;\n    return {\n      subject: `Storniert: ${d.device.name} (${d.reservation.code})`,\n      heading: 'Deine Reservierung ist storniert',\n      html: `<p>Hallo ${esc(d.customer.full_name)},</p><p>${esc(note)}</p>` + facts(d) + (free ? '' : strikeLine(d)),\n      text: `Hallo ${d.customer.full_name}, deine Reservierung ${d.reservation.code} ist storniert. ${note}`,\n    };\n  },\n\n  'reservation.no_show': (d) => {\n    const fee = feeOf(d);\n    const note = fee > 0 ? `Dafür gibt es einen Strike und eine Gebühr von ${euro(fee)}.` : 'Dafür gibt es einen Strike (Verwarnung, noch keine Gebühr).';\n    return {\n      subject: `Nicht abgeholt: ${d.device.name} (${d.reservation.code})`,\n      heading: 'Du hast deine Reservierung nicht abgeholt',\n      html: `<p>Hallo ${esc(d.customer.full_name)},</p><p>das Abholfenster ist abgelaufen und das Gerät stand umsonst bereit. ` +\n        `${esc(note)}</p>` + facts(d) + strikeLine(d) +\n        '<p style=\"font-size:13px\">Tipp: Mit 5 pünktlichen Mieten in Folge baust du einen Strike wieder ab.</p>',\n      text: `Hallo ${d.customer.full_name}, Reservierung ${d.reservation.code} wurde nicht abgeholt. ${note}\\n` +\n        `Strike-Stand: ${d.customer.strike_text}`,\n    };\n  },\n\n  'reservation.returned': (d) => {\n    const onTime = !d.extra || d.extra.on_time !== false;\n    return {\n      subject: `Danke für die Rückgabe (${d.reservation.code})`,\n      heading: 'Danke, Gerät ist zurück!',\n      html: `<p>Hallo ${esc(d.customer.full_name)},</p><p>${onTime ? 'Pünktlich zurückgegeben, danke!' : 'Die Rückgabe kam verspätet, deine Serie sauberer Mieten beginnt neu.'}</p>` +\n        facts(d) + strikeLine(d),\n      text: `Hallo ${d.customer.full_name}, danke für die Rückgabe von ${d.device.name}. Strike-Stand: ${d.customer.strike_text}`,\n    };\n  },\n\n  'strike.reduced': (d) => ({\n    subject: 'Ein Strike weniger',\n    heading: 'Gut gemacht: ein Strike weniger',\n    html: `<p>Hallo ${esc(d.customer.full_name)},</p><p>fünf saubere Mieten in Folge, dafür haben wir einen Strike abgebaut.</p>` + strikeLine(d),\n    text: `Hallo ${d.customer.full_name}, nach fünf sauberen Mieten ist ein Strike weg. Stand: ${d.customer.strike_text}`,\n  }),\n};\n\nconst out = [];\nfor (const item of $input.all()) {\n  const d = item.json.body || item.json;\n  const template = TEMPLATES[d.event];\n  const base = { event: d.event, reservation_id: (d.reservation && d.reservation.id) || '', payload: d };\n  if (!template || !d.customer || !d.customer.email) {\n    out.push({ json: { ...base, send: false } });\n    continue;\n  }\n  const mail = template(d);\n  out.push({\n    json: { ...base, send: true, to: d.customer.email, subject: mail.subject, html: layout(mail.heading, mail.html), text: mail.text },\n  });\n}\nreturn out;\n"
+      }
+    },
+    {
+      "id": "d0fdbeb2-dc84-5e03-8bb5-3c17881b62dc",
+      "name": "Mail nötig?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        880,
+        100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "50dd398b-db8e-5118-83aa-1fa3eb23b192",
+              "leftValue": "={{ $json.send }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "2fe1f7cc-10f3-5de0-99af-c9eb9eed61a4",
+      "name": "Mail senden (Gmail SMTP)",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1100,
+        100
+      ],
+      "parameters": {
+        "fromEmail": "={{ $env.MAIL_FROM }}",
+        "toEmail": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "emailFormat": "both",
+        "text": "={{ $json.text }}",
+        "html": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      }
+    },
+    {
+      "id": "305d718e-bf2c-5aea-8078-641c351c4c7c",
+      "name": "EventLog-Eintrag",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        880,
+        320
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "59ee2c7d-23f9-5413-b695-5b829b9e2314",
+              "name": "event_type",
+              "value": "={{ $json.event }}",
+              "type": "string"
+            },
+            {
+              "id": "06761ed8-f843-5ed3-ae7c-5d2569910160",
+              "name": "source",
+              "value": "n8n",
+              "type": "string"
+            },
+            {
+              "id": "601c8411-a074-54f9-8d87-562e28a946a8",
+              "name": "reservation_id",
+              "value": "={{ $json.reservation_id }}",
+              "type": "string"
+            },
+            {
+              "id": "a0211dec-2c2c-554b-870f-5b091a72b71c",
+              "name": "payload",
+              "value": "={{ JSON.stringify({ mail_sent: $json.send, to: $json.to || null, subject: $json.subject || null }) }}",
+              "type": "string"
+            },
+            {
+              "id": "227e1c0c-693f-5716-bbeb-c8b634a2778a",
+              "name": "created_at",
+              "value": "={{ $now.toUTC().toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "bc7f6b7c-910c-5e64-a8d2-da7bc66dc170",
+      "name": "EventLog in Airtable",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        1100,
+        320
+      ],
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AIRTABLE_BASE_ID }}"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "id",
+          "value": "EventLog"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {
+          "typecast": true
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Event von Flask": {
+      "main": [
+        [
+          {
+            "node": "Secret korrekt?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Secret korrekt?": {
+      "main": [
+        [
+          {
+            "node": "Antwort 200",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Antwort 401",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Antwort 200": {
+      "main": [
+        [
+          {
+            "node": "Mail bauen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mail bauen": {
+      "main": [
+        [
+          {
+            "node": "Mail nötig?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "EventLog-Eintrag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mail nötig?": {
+      "main": [
+        [
+          {
+            "node": "Mail senden (Gmail SMTP)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "EventLog-Eintrag": {
+      "main": [
+        [
+          {
+            "node": "EventLog in Airtable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Berlin",
+    "errorWorkflow": "hubrentWf99Error"
+  },
+  "pinData": {},
+  "tags": []
+}

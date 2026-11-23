@@ -33,6 +33,20 @@ class RecordingPublisher:
         return [t for t, _ in self.events]
 
 
+class LoggingPublisher:
+    """Lokale Entwicklung ohne n8n: schreibt Events ins Log statt Mails zu verschicken.
+
+    Bestätigungs- und Storno-Links erscheinen so im Terminal und lassen sich
+    zum Testen direkt im Browser öffnen.
+    """
+
+    def publish(self, event_type: str, payload: dict[str, Any]) -> bool:
+        links = payload.get("links") or {}
+        email = (payload.get("customer") or {}).get("email", "")
+        log.info("Event %s für %s %s", event_type, email, " ".join(f"{k}: {v}" for k, v in links.items()))
+        return True
+
+
 class N8nWebhookPublisher:
     """Schickt Events per POST an den n8n-Webhook (WF-01 Mail Dispatcher)."""
 

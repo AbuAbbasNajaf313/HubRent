@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% from "_macros.html" import button, reservation_facts %}
+{% block title %}Reservierung stornieren{% endblock %}
+{% block content %}
+<div class="max-w-xl mx-auto space-y-6">
+  <h1 class="text-2xl font-bold">Reservierung stornieren?</h1>
+  <div class="rounded-xl bg-white border border-stone-200 p-5">{{ reservation_facts(details) }}</div>
+  {% if not assessment.allowed %}
+    <div class="rounded-lg bg-stone-100 p-4 text-sm">{{ assessment.reason }}</div>
+  {% elif assessment.free_of_charge %}
+    <div class="rounded-lg bg-emerald-50 border border-emerald-200 p-4 text-sm text-emerald-900">{{ assessment.reason }}</div>
+    <form method="post">{{ form.csrf_token }}{{ button('Kostenlos stornieren', 'dark', extra='w-full py-3') }}</form>
+  {% else %}
+    <div class="rounded-lg bg-rose-50 border border-rose-200 p-4 text-sm text-rose-900">
+      <strong>{{ assessment.reason }}</strong>
+      {% if fee > 0 %}Dazu kommt eine Gebühr von {{ fee|euro }}.{% else %}Beim ersten Strike gibt es nur eine Verwarnung, keine Gebühr.{% endif %}
+    </div>
+    <form method="post">{{ form.csrf_token }}{{ button('Trotzdem stornieren', 'danger', extra='w-full py-3') }}</form>
+  {% endif %}
+</div>
+{% endblock %}

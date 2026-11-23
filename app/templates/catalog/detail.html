@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% from "_macros.html" import button %}
+{% block title %}{{ device_type.name }}{% endblock %}
+{% block content %}
+<a href="{{ url_for('catalog.devices') }}" class="text-sm text-stone-500 hover:text-stone-900">← Alle Geräte</a>
+
+<div class="grid lg:grid-cols-[1fr,420px] gap-8 mt-4">
+  <section>
+    <div class="text-sm font-medium text-stone-500">{{ device_type.category }}</div>
+    <h1 class="text-3xl font-bold mb-3">{{ device_type.name }}</h1>
+    <p class="text-stone-600 mb-6">{{ device_type.description }}</p>
+
+    {% if entry %}
+    <div class="grid grid-cols-3 gap-3 mb-8">
+      {% for rt in [RentalType.FOUR_HOURS, RentalType.DAY, RentalType.WEEKEND] %}
+      <div class="rounded-xl bg-white border border-stone-200 p-4">
+        <div class="text-xs text-stone-500">{{ {'FOUR_HOURS': '4 Stunden', 'DAY': 'pro Tag', 'WEEKEND': 'Fr 14 – Mo 10 Uhr'}[rt.value] }}</div>
+        <div class="text-xl font-bold">{{ entry.prices[rt]|euro }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="rounded-xl bg-white border border-stone-200 p-5 text-sm text-stone-600 space-y-2">
+      <h2 class="font-semibold text-stone-900">Gut zu wissen</h2>
+      <p>Buchst du mehr als 48 Stunden im Voraus, fragen wir zwei Tage vorher per Mail nach, ob es dabei bleibt. Ohne Bestätigung geben wir das Gerät 24 Stunden vor Beginn kostenlos wieder frei.</p>
+      <p>Kurzfristige Buchungen (bis 48 Stunden vorher) sind sofort verbindlich, du bekommst die PIN direkt.</p>
+      <p>Abholen kannst du ab 30 Minuten vor bis 2 Stunden nach Mietbeginn.</p>
+    </div>
+  </section>
+
+  <aside>
+    {% if high_strikes %}
+    <div class="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 mb-4">
+      Du hast {{ current_user.customer.strikes }} Strikes. Ab Phase 2 ist eine Buchung dann nur mit hinterlegter Karte möglich.
+    </div>
+    {% endif %}
+
+    <form id="booking" method="post" action="{{ url_for('catalog.book') }}"
+          class="rounded-xl bg-white border border-stone-200 p-6 space-y-5 lg:sticky lg:top-24"
+          hx-get="{{ url_for('catalog.availability') }}" hx-trigger="load, change, input from:#days delay:300ms" hx-target="#quote">
+      {{ form.csrf_token }}
+      {{ form.device_type_id }}
+      <h2 class="text-lg font-semibold">Reservieren</h2>
+
+      <label class="block">
+        <span class="block text-sm font-medium text-stone-700 mb-1">Hub</span>
+        {{ form.hub_id(class="w-full rounded-lg border border-stone-300 bg-white px-3 py-2") }}
+      </label>
+
+      <fieldset>
+        <legend class="block text-sm font-medium text-stone-700 mb-1">Mietart</legend>
+        <div class="grid grid-cols-3 gap-2">
+          {% for option in form.rental_type %}
+          <label class="cursor-pointer">
+            {{ option(class="peer sr-only", **{'data-rental': option.data}) }}
+            <span class="block text-center rounded-lg border border-stone-300 px-2 py-2 text-sm peer-checked:border-brand-600 peer-checked:bg-brand-50 peer-checked:text-brand-700 peer-checked:font-semibold peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500">{{ option.label.text }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <div data-show="FOUR_HOURS DAY">
+        <label class="block">
+          <span class="block text-sm font-medium text-stone-700 mb-1">Start</span>
+          {{ form.start(type="datetime-local", min=min_start, step=step_seconds, class="w-full rounded-lg border border-stone-300 bg-white px-3 py-2") }}
+          <span class="block text-xs text-stone-500 mt-1">Immer zur vollen Stunde. Die Hubs sind rund um die Uhr geöffnet.</span>
+        </label>
+      </div>
+
+      <div data-show="DAY">
+        <label class="block">
+          <span class="block text-sm font-medium text-stone-700 mb-1">Anzahl Tage</span>
+          {{ form.days(type="number", min=1, max=14, id="days", class="w-full rounded-lg border border-stone-300 bg-white px-3 py-2") }}
+        </label>
+      </div>
+
+      <div data-show="WEEKEND">
+        <label class="block">
+          <span class="block text-sm font-medium text-stone-700 mb-1">Wochenende</span>
+          {{ form.weekend_start(class="w-full rounded-lg border border-stone-300 bg-white px-3 py-2") }}
+        </label>
+      </div>
+
+      <div id="quote" aria-live="polite" class="min-h-[4rem]">
+        <p class="text-sm text-stone-500">Preis wird berechnet …</p>
+      </div>
+
+      {% if current_user.is_authenticated %}
+        {{ button('Jetzt reservieren', extra='w-full') }}
+      {% else %}
+        <a href="{{ url_for('auth.login', next=request.full_path) }}" class="block text-center rounded-lg bg-stone-900 text-white px-4 py-2 text-sm font-semibold hover:bg-stone-700">Zum Reservieren anmelden</a>
+      {% endif %}
+    </form>
+  </aside>
+</div>
+
+<script>
+  // Zeigt nur die Felder, die zur gewählten Mietart passen.
+  (function () {
+    const form = document.getElementById('booking');
+    function update() {
+      const checked = form.querySelector('input[name="rental_type"]:checked');
+      const type = checked ? checked.value : 'FOUR_HOURS';
+      form.querySelectorAll('[data-show]').forEach(el => {
+        el.hidden = !el.dataset.show.split(' ').includes(type);
+      });
+    }
+    form.addEventListener('change', update);
+    update();
+  })();
+</script>
+{% endblock %}

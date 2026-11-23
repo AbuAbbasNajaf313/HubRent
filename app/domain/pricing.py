@@ -85,3 +85,34 @@ def validate_start(start: datetime, now: datetime, rules: RuleConfig, rental_typ
         seconds_of_day = local.hour * 3600 + local.minute * 60 + local.second
         if local.microsecond or seconds_of_day % granularity_s:
             raise InvalidBookingTime("Startzeit muss auf einer vollen Stunde liegen.")
+
+
+# --- Startvorschläge für die Oberfläche -------------------------------------------
+
+def next_possible_start(now: datetime, rules: RuleConfig) -> datetime:
+    """Frühester gültiger Start: ``now`` + Vorlauf, aufgerundet auf das Startraster (lokale Zeit)."""
+    _require_aware(now)
+    earliest = (now + rules.min_lead_time).astimezone(rules.timezone)
+    step = int(rules.start_granularity.total_seconds())
+    seconds = earliest.hour * 3600 + earliest.minute * 60 + earliest.second + (1 if earliest.microsecond else 0)
+    rounded = -(-seconds // step) * step  # aufrunden auf ein Vielfaches des Rasters
+    midnight = datetime.combine(earliest.date(), time(0), tzinfo=rules.timezone)
+    # Rechnen mit gleicher tzinfo ist in Python Wanduhrzeit: 13:00 bleibt 13:00, auch bei Zeitumstellung.
+    return midnight + timedelta(seconds=rounded)
+
+
+def upcoming_weekend_starts(now: datetime, rules: RuleConfig, count: int = 8) -> list[datetime]:
+    """Die nächsten buchbaren Freitage 14:00 (lokale Zeit), höchstens bis ``max_advance``."""
+    _require_aware(now)
+    local = now.astimezone(rules.timezone)
+    weekday, t = WEEKEND_START
+    friday = local.date() + timedelta(days=(weekday - local.weekday()) % 7)
+    result: list[datetime] = []
+    while len(result) < count:
+        start = datetime.combine(friday, t, tzinfo=rules.timezone)
+        if start > now + rules.max_advance:
+            break
+        if start >= now + rules.min_lead_time:
+            result.append(start)
+        friday += timedelta(days=7)
+    return result

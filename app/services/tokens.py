@@ -27,5 +27,14 @@ def verify_token(token: str, stored_hash: str) -> bool:
     return hmac.compare_digest(hash_token(token), stored_hash)
 
 
+# Ohne leicht verwechselbare Zeichen (0/O, 1/I/L), weil Kunden den Code am Terminal abtippen.
+CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
+
+
+def new_reservation_code(length: int = 6) -> str:
+    """Zufälliger, gut lesbarer Code wie ``HR-7K3QXM`` (31^6 ≈ 887 Mio. Möglichkeiten)."""
+    return "HR-" + "".join(secrets.choice(CODE_ALPHABET) for _ in range(length))
+
+
 def new_pin(length: int = 6) -> str:
     return "".join(secrets.choice("0123456789") for _ in range(length))

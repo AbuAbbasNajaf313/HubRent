@@ -1,0 +1,25 @@
+{# HTMX-Partial: wird bei jeder Änderung im Buchungsformular neu geladen #}
+{% if error %}
+  <div class="rounded-lg bg-rose-50 border border-rose-200 px-4 py-3 text-sm text-rose-800">{{ error }}</div>
+{% else %}
+  <div class="rounded-lg bg-stone-100 px-4 py-3">
+    <div class="flex items-baseline justify-between">
+      <span class="text-sm text-stone-600">Preis</span>
+      <span class="text-2xl font-bold">{{ quote.price|euro }}</span>
+    </div>
+    <div class="text-xs text-stone-500 mt-1">{{ quote.start_at|local }} bis {{ quote.end_at|local }}</div>
+    <div class="mt-2 text-sm">
+      {% if quote.free_devices %}
+        <span class="text-emerald-700 font-medium">✓ {{ quote.free_devices }} Gerät{{ 'e' if quote.free_devices != 1 }} frei</span>
+      {% else %}
+        <span class="text-rose-700 font-medium">In diesem Zeitraum ist an diesem Hub nichts frei.</span>
+      {% endif %}
+    </div>
+  </div>
+  {% if quote.binding and quote.free_devices %}
+  <label class="mt-3 flex gap-3 items-start rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+    <input type="checkbox" name="binding" value="y" class="mt-1 h-4 w-4 accent-brand-600">
+    <span><strong>Kurzfristige Buchung.</strong> {{ form.binding.label.text }}</span>
+  </label>
+  {% endif %}
+{% endif %}

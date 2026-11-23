@@ -95,3 +95,35 @@ def test_demo_mode_allows_minute_starts(now):
 
     demo = RuleConfig.from_env({"DEMO_MODE": "true"})
     validate_start(now + timedelta(minutes=5), now, demo, RentalType.FOUR_HOURS)
+
+
+# --- Startvorschläge für die Oberfläche ---------------------------------------
+
+from app.domain.pricing import next_possible_start, upcoming_weekend_starts  # noqa: E402
+
+
+def test_next_possible_start_rounds_up_to_full_hour(rules):
+    # 12:10 + 30 min Vorlauf = 12:40 → nächste volle Stunde 13:00
+    assert next_possible_start(berlin(2026, 11, 23, 12, 10), rules) == berlin(2026, 11, 23, 13)
+    # 12:30 + 30 min = 13:00 → genau 13:00 ist erlaubt
+    assert next_possible_start(berlin(2026, 11, 23, 12, 30), rules) == berlin(2026, 11, 23, 13)
+
+
+def test_next_possible_start_is_valid(rules):
+    now = berlin(2026, 11, 23, 12, 7)
+    validate_start(next_possible_start(now, rules), now, rules, RentalType.DAY)
+
+
+def test_upcoming_weekends(rules):
+    starts = upcoming_weekend_starts(berlin(2026, 11, 23, 12), rules, count=3)
+    assert starts == [berlin(2026, 11, 27, 14), berlin(2026, 12, 4, 14), berlin(2026, 12, 11, 14)]
+
+
+def test_weekend_too_close_is_skipped(rules):
+    # Freitag 13:45: Vorlauf 30 min reicht nicht mehr für 14:00
+    starts = upcoming_weekend_starts(berlin(2026, 11, 27, 13, 45), rules, count=1)
+    assert starts == [berlin(2026, 12, 4, 14)]
+
+
+def test_weekend_starts_respect_max_advance(rules):
+    assert len(upcoming_weekend_starts(berlin(2026, 11, 23, 12), rules, count=20)) == 8  # 60 Tage

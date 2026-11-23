@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% from "_macros.html" import reservation_facts, pickup_box %}
+{% block title %}Bestätigt{% endblock %}
+{% block content %}
+<div class="max-w-xl mx-auto space-y-6">
+  <h1 class="text-2xl font-bold">{{ 'Bestätigt! Hier ist deine PIN.' if changed else 'Deine Reservierung ist bestätigt.' }}</h1>
+  {{ pickup_box(details) }}
+  <div class="rounded-xl bg-white border border-stone-200 p-5">{{ reservation_facts(details) }}</div>
+  <p class="text-sm text-stone-500">Am Terminal im Hub die PIN eingeben, dann öffnet sich dein Fach.</p>
+</div>
+{% endblock %}

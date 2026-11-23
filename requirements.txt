@@ -1,6 +1,7 @@
 flask>=3.0,<4
 flask-login>=0.6
 flask-wtf>=1.2
+wtforms>=3.3
 pyairtable>=3.0
 gunicorn>=22
 pytest>=8

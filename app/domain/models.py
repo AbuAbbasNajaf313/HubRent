@@ -98,3 +98,4 @@ class Reservation:
     cancelled_at: datetime | None = None
     picked_up_at: datetime | None = None
     returned_at: datetime | None = None
+    code: str = ""  # z. B. HR-7K3QXM, für Mails und die Rückgabe am Terminal

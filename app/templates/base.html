@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}HubRent{% endblock %} · HubRent</title>
+  {# Tailwind Play-CDN + HTMX: für Phase 1 ausreichend, kein Build-Schritt nötig #}
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: {
+      colors: { brand: { 50:'#fff7ed', 100:'#ffedd5', 500:'#f97316', 600:'#ea580c', 700:'#c2410c', 900:'#431407' } },
+      fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'] }
+    } } }
+  </script>
+  <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
+</head>
+<body class="min-h-screen bg-stone-50 text-stone-900 antialiased flex flex-col">
+  <header class="bg-white/90 backdrop-blur border-b border-stone-200 sticky top-0 z-10">
+    <nav class="max-w-6xl mx-auto px-4 h-16 flex items-center gap-6">
+      <a href="{{ url_for('catalog.index') }}" class="flex items-center gap-2 font-bold text-lg tracking-tight">
+        <span class="grid place-items-center w-8 h-8 rounded-lg bg-brand-600 text-white text-sm">HR</span>
+        HubRent
+      </a>
+      <a href="{{ url_for('catalog.devices') }}" class="text-sm font-medium text-stone-600 hover:text-stone-900">Geräte</a>
+      <a href="{{ url_for('terminal.choose') }}" class="text-sm font-medium text-stone-600 hover:text-stone-900">Hub-Terminal</a>
+      <div class="ml-auto flex items-center gap-3 text-sm">
+        {% if current_user.is_authenticated %}
+          <a href="{{ url_for('account.overview') }}" class="font-medium text-stone-600 hover:text-stone-900">
+            Mein Konto
+            {% if current_user.customer.strikes %}<span class="ml-1 rounded-full bg-rose-100 text-rose-700 px-2 py-0.5 text-xs">{{ current_user.customer.strikes }} Strike{{ 's' if current_user.customer.strikes != 1 }}</span>{% endif %}
+          </a>
+          <form method="post" action="{{ url_for('auth.logout') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="text-stone-500 hover:text-stone-900">Abmelden</button>
+          </form>
+        {% else %}
+          <a href="{{ url_for('auth.login') }}" class="font-medium text-stone-600 hover:text-stone-900">Anmelden</a>
+          <a href="{{ url_for('auth.register') }}" class="rounded-lg bg-stone-900 text-white px-3 py-2 font-medium hover:bg-stone-700">Registrieren</a>
+        {% endif %}
+      </div>
+    </nav>
+  </header>
+
+  {% if demo_mode %}
+  <div class="bg-violet-600 text-white text-center text-xs py-1.5">Demo-Modus: Fristen laufen in Minuten statt Stunden.</div>
+  {% endif %}
+
+  <main class="flex-1 w-full max-w-6xl mx-auto px-4 py-8">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div class="space-y-2 mb-6">
+        {% for category, message in messages %}
+          {% set styles = {'error': 'bg-rose-50 border-rose-200 text-rose-800', 'success': 'bg-emerald-50 border-emerald-200 text-emerald-800'} %}
+          <div role="status" class="rounded-lg border px-4 py-3 text-sm {{ styles.get(category, 'bg-sky-50 border-sky-200 text-sky-800') }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="border-t border-stone-200 text-xs text-stone-500">
+    <div class="max-w-6xl mx-auto px-4 py-6 flex flex-wrap gap-x-6 gap-y-1">
+      <span>HubRent ist ein fiktives Demo-Projekt. Alle Hubs, Geräte und Preise sind ausgedacht.</span>
+      <span class="ml-auto">Datenquelle: {{ 'Airtable' if data_source == 'airtable' else 'Demo-Daten im Speicher' }}</span>
+    </div>
+  </footer>
+</body>
+</html>

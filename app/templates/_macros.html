@@ -1,0 +1,51 @@
+{% macro status_badge(status) -%}
+  {% set label, cls = STATUS_LABELS[status] %}
+  <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium {{ cls }}">{{ label }}</span>
+{%- endmacro %}
+
+{% macro field(f, type=None, help=None) -%}
+  <label class="block">
+    <span class="block text-sm font-medium text-stone-700 mb-1">{{ f.label.text }}</span>
+    {{ f(class="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none", type=type) if type else f(class="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none") }}
+    {% if help %}<span class="block text-xs text-stone-500 mt-1">{{ help }}</span>{% endif %}
+    {% for e in f.errors %}<span class="block text-xs text-rose-700 mt-1">{{ e }}</span>{% endfor %}
+  </label>
+{%- endmacro %}
+
+{% macro button(text, kind='primary', extra='') -%}
+  {% set styles = {
+    'primary': 'bg-brand-600 text-white hover:bg-brand-700',
+    'dark': 'bg-stone-900 text-white hover:bg-stone-700',
+    'ghost': 'border border-stone-300 bg-white text-stone-700 hover:bg-stone-100',
+    'danger': 'border border-rose-300 bg-white text-rose-700 hover:bg-rose-50',
+  } %}
+  <button class="inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold transition {{ styles[kind] }} {{ extra }}" {{ kwargs.get('attrs', '')|safe }}>{{ text }}</button>
+{%- endmacro %}
+
+{% macro reservation_facts(d) -%}
+  <dl class="grid grid-cols-[auto,1fr] gap-x-6 gap-y-2 text-sm">
+    <dt class="text-stone-500">Gerät</dt><dd class="font-medium">{{ d.device.name }}</dd>
+    <dt class="text-stone-500">Hub</dt><dd>{{ d.hub.name }} · {{ d.hub.address }}</dd>
+    <dt class="text-stone-500">Mietart</dt><dd>{{ RENTAL_LABELS[RentalType(d.reservation.rental_type)] }}</dd>
+    <dt class="text-stone-500">Zeitraum</dt><dd>{{ d.reservation.start_local }} bis {{ d.reservation.end_local }}</dd>
+    <dt class="text-stone-500">Preis</dt><dd>{{ d.reservation.price|euro }}</dd>
+    <dt class="text-stone-500">Code</dt><dd class="font-mono">{{ d.reservation.code }}</dd>
+  </dl>
+{%- endmacro %}
+
+{% macro pickup_box(d) -%}
+  <div class="rounded-xl bg-stone-900 text-white p-5 grid sm:grid-cols-3 gap-4">
+    <div>
+      <div class="text-xs uppercase tracking-wide text-stone-400">Deine PIN</div>
+      <div class="font-mono text-3xl font-bold tracking-[0.3em]">{{ d.reservation.pin }}</div>
+    </div>
+    <div>
+      <div class="text-xs uppercase tracking-wide text-stone-400">Fach</div>
+      <div class="text-3xl font-bold">{{ d.device.locker_number }}</div>
+    </div>
+    <div>
+      <div class="text-xs uppercase tracking-wide text-stone-400">Abholfenster</div>
+      <div class="text-sm">{{ d.reservation.pickup_from_local }}<br>bis {{ d.reservation.pickup_until_local }}</div>
+    </div>
+  </div>
+{%- endmacro %}

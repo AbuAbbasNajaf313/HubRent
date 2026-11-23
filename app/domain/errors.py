@@ -5,6 +5,10 @@ class DomainError(Exception):
     """Basisklasse für alle Regelverletzungen."""
 
 
+class NotFound(DomainError):
+    """Reservierung, Kunde o. Ä. existiert nicht."""
+
+
 class InvalidTransition(DomainError):
     """Ein Statuswechsel ist laut Statusmaschine nicht erlaubt."""
 

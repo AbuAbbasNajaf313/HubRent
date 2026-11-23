@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "_macros.html" import status_badge, button %}
+{% block title %}Mein Konto{% endblock %}
+
+{% macro reservation_row(item, show_actions) %}
+  {% set r = item.reservation %}{% set d = item.details %}
+  <li class="rounded-xl bg-white border border-stone-200 p-4 flex flex-wrap items-center gap-4">
+    <div class="flex-1 min-w-[14rem]">
+      <div class="flex items-center gap-2 mb-1">
+        <a href="{{ url_for('account.reservation', reservation_id=r.id) }}" class="font-semibold hover:text-brand-700">{{ d.device.name }}</a>
+        {{ status_badge(r.status) }}
+      </div>
+      <div class="text-sm text-stone-600">{{ d.hub.name }} · {{ d.reservation.start_local }} bis {{ d.reservation.end_local }}</div>
+      <div class="text-xs text-stone-500 font-mono">{{ r.code }} · {{ r.price|euro }}</div>
+    </div>
+    {% if show_actions %}
+    <div class="flex flex-wrap gap-2">
+      {% if item.can_confirm %}
+      <form method="post" action="{{ url_for('account.confirm', reservation_id=r.id) }}">
+        {{ form.csrf_token }}{{ button('Bestätigen', 'dark') }}
+      </form>
+      {% endif %}
+      {% if item.cancellation.allowed %}
+      <form method="post" action="{{ url_for('account.cancel', reservation_id=r.id) }}"
+            {% if not item.cancellation.free_of_charge %}onsubmit="return confirm('Spätstorno: Das gibt einen Strike. Wirklich stornieren?')"{% endif %}>
+        {{ form.csrf_token }}
+        {{ button('Stornieren' if item.cancellation.free_of_charge else 'Stornieren (Strike)', 'ghost' if item.cancellation.free_of_charge else 'danger') }}
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+  </li>
+{% endmacro %}
+
+{% block content %}
+<h1 class="text-3xl font-bold mb-6">Hallo {{ ov.customer.full_name }}</h1>
+
+<div class="grid lg:grid-cols-[1fr,340px] gap-8">
+  <div class="space-y-8">
+    <section>
+      <h2 class="text-lg font-semibold mb-3">Aktuelle Reservierungen</h2>
+      {% if ov.active %}
+        <ul class="space-y-3">{% for item in ov.active %}{{ reservation_row(item, true) }}{% endfor %}</ul>
+      {% else %}
+        <p class="text-stone-600 text-sm">Keine offenen Reservierungen. <a href="{{ url_for('catalog.devices') }}" class="text-brand-700 font-semibold">Gerät finden</a></p>
+      {% endif %}
+    </section>
+    {% if ov.past %}
+    <section>
+      <h2 class="text-lg font-semibold mb-3">Vergangene Reservierungen</h2>
+      <ul class="space-y-3 opacity-80">{% for item in ov.past %}{{ reservation_row(item, false) }}{% endfor %}</ul>
+    </section>
+    {% endif %}
+  </div>
+
+  <aside>
+    {% set c = ov.customer %}{% set need = ov.required_clean_rentals %}
+    <section class="rounded-xl bg-white border border-stone-200 p-5" aria-labelledby="strike-title">
+      <h2 id="strike-title" class="font-semibold mb-3">Dein Strike-Stand</h2>
+      <div class="flex items-baseline gap-2 mb-1">
+        <span class="text-4xl font-extrabold {{ 'text-rose-600' if c.strikes >= 2 else 'text-amber-600' if c.strikes == 1 else 'text-emerald-600' }}">{{ c.strikes }}</span>
+        <span class="text-stone-600">Strike{{ 's' if c.strikes != 1 }}</span>
+      </div>
+      {% if c.strikes %}
+        <p class="text-sm text-stone-600 mb-2">{{ c.clean_streak }}/{{ need }} saubere Mieten bis zum Abbau eines Strikes</p>
+        <div class="h-2 rounded-full bg-stone-200 overflow-hidden" role="progressbar" aria-valuemin="0" aria-valuemax="{{ need }}" aria-valuenow="{{ c.clean_streak }}">
+          <div class="h-full bg-emerald-500" style="width: {{ (100 * c.clean_streak / need)|round }}%"></div>
+        </div>
+        <p class="text-xs text-stone-500 mt-3">Nächster Strike: Gebühr von {{ fee_preview(c.strikes, 100)|int }} % einer Tagesmiete.</p>
+      {% else %}
+        <p class="text-sm text-stone-600">Alles im grünen Bereich. Danke, dass du deine Reservierungen abholst!</p>
+      {% endif %}
+      <div class="mt-4 pt-4 border-t border-stone-200 flex justify-between text-sm">
+        <span class="text-stone-600">Offene Gebühren</span>
+        <span class="font-semibold">{{ ov.open_fees|euro }}</span>
+      </div>
+      {% if ov.open_fees %}<p class="text-xs text-stone-500 mt-1">Die Zahlung per Karte folgt in Phase 2.</p>{% endif %}
+    </section>
+  </aside>
+</div>
+{% endblock %}
